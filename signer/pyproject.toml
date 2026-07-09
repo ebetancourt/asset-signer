@@ -1,0 +1,19 @@
+[project]
+name = "asset-signer"
+version = "0.1.0"
+description = "Build signed, offline-verifiable asset bundles (minisign format)"
+requires-python = ">=3.10"
+dependencies = ["pynacl>=1.5"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+asset-signer = "asset_signer.__main__:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["asset_signer"]
