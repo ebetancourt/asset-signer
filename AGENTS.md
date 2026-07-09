@@ -17,6 +17,12 @@ network access at verify time.
 - **Verifier (Rust, `verifier/`)** — a small CLI with the **public key compiled
   in**. It verifies the manifest signature, then checks every asset's hash
   against the manifest. Zero network, zero config, single static binary.
+- **Server (Python, `server/`)** — an optional FastAPI wrapper around the
+  signer pipeline: a static upload page plus `POST /api/bundle`, which takes
+  uploaded files and streams back the same `manifest.txt` /
+  `manifest.txt.minisig` / asset-zip bundle the CLI produces. Convenience
+  layer only — it imports `asset_signer.bundle.build_bundle` directly rather
+  than duplicating pipeline logic.
 
 The two sides are connected by the minisign wire format, not by shared code.
 Signatures produced by the Python signer verify with the reference `minisign`
@@ -40,10 +46,16 @@ asset-signer/
 │   │   └── __main__.py       # CLI: `keygen`, `bundle`
 │   └── tests/
 │       └── test_pipeline.py
-└── verifier/                 # Rust: offline verify
-    ├── Cargo.toml
-    └── src/
-        └── main.rs           # embedded public key, two-layer verification
+├── verifier/                  # Rust: offline verify
+│   ├── Cargo.toml
+│   └── src/
+│       └── main.rs           # embedded public key, two-layer verification
+└── server/                   # Python: optional web upload -> signed bundle
+    ├── pyproject.toml
+    ├── asset_signer_server/
+    │   └── main.py            # FastAPI: POST /api/bundle, serves static/
+    └── static/
+        └── index.html         # drag-and-drop upload page
 ```
 
 ## Environment & setup
@@ -60,6 +72,11 @@ pip install -e '.[dev]'          # installs pynacl + pytest, exposes `asset-sign
 # Rust verifier
 cd ../verifier
 cargo build --release
+
+# Server (optional web upload frontend)
+cd ../server
+python -m venv .venv && source .venv/bin/activate
+pip install -e . -e ../signer     # installs fastapi/uvicorn + asset_signer itself
 ```
 
 ## Build / test / run commands
@@ -76,6 +93,10 @@ python -m asset_signer bundle --assets ./assets --out ./dist --secret bundle.key
 cargo build --release
 cargo test                                  # includes the sha256 known-vector test
 ./target/release/asset-verify /path/to/dist # exit 0 = verified
+
+# --- Server (from server/) ---
+ASSET_SIGNER_SECRET_KEY=../signer/bundle.key uvicorn asset_signer_server.main:app --reload
+# then open http://127.0.0.1:8000, upload files, download signed-bundle.zip
 ```
 
 End-to-end smoke test (proves the Python→Rust chain):
@@ -121,6 +142,11 @@ nothing. See README "Trust model" for the full discussion.
 - **The `PUBLIC_KEY` constant in `main.rs` is a placeholder.** It won't verify
   real bundles until replaced with a freshly generated key. Don't commit a real
   secret; the public line is safe to commit.
+- **`server/` holds the secret key in-process.** It loads `bundle.key` at
+  startup (`ASSET_SIGNER_SECRET_KEY`) and signs on every upload — fine for
+  local/dev use per `secretkey.py`'s security note, but don't treat it as a
+  production deployment pattern without moving the key to a proper secrets
+  store.
 
 ## What this PoC deliberately omits
 
