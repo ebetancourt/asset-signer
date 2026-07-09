@@ -36,6 +36,7 @@ asset-signer/
 ├── AGENTS.md                 # you are here
 ├── CLAUDE.md                 # pointer to this file
 ├── README.md                 # user-facing usage docs
+├── docker-compose.yml         # runs server/ in a container (see below)
 ├── signer/                   # Python: build + sign bundles
 │   ├── pyproject.toml
 │   ├── asset_signer/
@@ -51,6 +52,7 @@ asset-signer/
 │   └── src/
 │       └── main.rs           # embedded public key, two-layer verification
 └── server/                   # Python: optional web upload -> signed bundle
+    ├── Dockerfile             # built with repo root as context (needs signer/ too)
     ├── pyproject.toml
     ├── asset_signer_server/
     │   └── main.py            # FastAPI: POST /api/bundle, serves static/
@@ -97,6 +99,12 @@ cargo test                                  # includes the sha256 known-vector t
 # --- Server (from server/) ---
 ASSET_SIGNER_SECRET_KEY=../signer/bundle.key uvicorn asset_signer_server.main:app --reload
 # then open http://127.0.0.1:8000, upload files, download signed-bundle.zip
+
+# --- Server via Docker (from repo root) ---
+docker compose up --build
+# bind-mounts signer/bundle.key read-only into the container; the key must
+# already exist on the host (run `asset_signer keygen` first). Same
+# http://127.0.0.1:8000 upload flow, no local Python/uvicorn needed.
 ```
 
 End-to-end smoke test (proves the Python→Rust chain):
@@ -147,6 +155,11 @@ nothing. See README "Trust model" for the full discussion.
   local/dev use per `secretkey.py`'s security note, but don't treat it as a
   production deployment pattern without moving the key to a proper secrets
   store.
+- **The Docker image never bakes in the secret key.** `.dockerignore` excludes
+  `*.key`/`bundle.pub`/`BUNDLE_PW` even though the build `COPY`s the whole
+  `signer/` directory; `docker-compose.yml` bind-mounts `bundle.key`
+  read-only from the host at runtime instead. Don't remove those
+  `.dockerignore` lines or switch to `COPY`ing the key into the image.
 
 ## What this PoC deliberately omits
 

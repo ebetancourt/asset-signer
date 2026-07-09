@@ -1,0 +1,20 @@
+# Secrets & signing material — never baked into an image
+*.key
+bundle.pub
+BUNDLE_PW
+
+# Build output
+dist/
+verifier/target/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+build/
+
+# OS / editor
+.DS_Store
+.git/

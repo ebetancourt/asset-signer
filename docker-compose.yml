@@ -1,0 +1,11 @@
+services:
+  asset-signer-server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - ASSET_SIGNER_SECRET_KEY=/secrets/bundle.key
+    volumes:
+      - ./signer/bundle.key:/secrets/bundle.key:ro
