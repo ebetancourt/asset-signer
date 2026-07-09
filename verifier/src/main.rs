@@ -24,7 +24,7 @@ use sha2::{Digest, Sha256};
 ///
 /// Replace this with the line printed by `asset_signer keygen`. The value
 /// below is a placeholder and will not verify real bundles.
-const PUBLIC_KEY: &str = "RWR2ounlEHdKOz+SzsykkyTqAYRNDkRwr2D1yz3G/jZEzf9XVoIr8kiB";
+const PUBLIC_KEY: &str = "RWTLup2LeqFg6iwSPxegsSr8notkZW58NsEuNhdgEoJSURBQm+gc2owy";
 
 const MANIFEST: &str = "manifest.txt";
 const SIGNATURE: &str = "manifest.txt.minisig";
