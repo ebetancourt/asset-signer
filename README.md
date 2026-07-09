@@ -50,6 +50,11 @@ signer/                 Python: build + sign bundles
 verifier/               Rust: offline verify
   src/main.rs           embedded public key, two-layer verification
   Cargo.toml
+server/                 Python: optional web upload -> signed bundle (FastAPI)
+  asset_signer_server/main.py   POST /api/bundle, wraps asset_signer.bundle
+  static/index.html             drag-and-drop upload page
+  Dockerfile
+docker-compose.yml      runs server/ in a container
 ```
 
 ## Usage
@@ -103,15 +108,102 @@ cd dist && sha256sum -c <(grep -v minisig manifest.txt)   # asset integrity
 minisign -Vm manifest.txt -P <your-public-key>            # authenticity
 ```
 
+### Alternative to step 2: build bundles from a web upload form
+
+`server/` wraps the same pipeline behind a drag-and-drop upload page, for
+cases where you'd rather not run the CLI by hand. It calls
+`asset_signer.bundle.build_bundle` directly, so the bundle it produces is
+identical in format to the CLI's — same manifest, same signature, verified
+the same way in step 3.
+
+**Locally:**
+
+```bash
+cd server
+python -m venv .venv && source .venv/bin/activate
+pip install -e . -e ../signer
+ASSET_SIGNER_SECRET_KEY=../signer/bundle.key uvicorn asset_signer_server.main:app --reload
+```
+
+**Or via Docker** (no local Python/uvicorn needed — from the repo root):
+
+```bash
+docker compose up --build
+```
+
+Either way, open `http://127.0.0.1:8000`, drop in files, and click "Build
+signed bundle" — this downloads `signed-bundle.zip`, which unzips into the
+same `manifest.txt` / `manifest.txt.minisig` / asset-zip layout `./dist`
+would have.
+
+## End-to-end smoke test
+
+This walks the whole chain from a clean checkout: generate a key, embed it,
+build a bundle two different ways, and verify both — including proving that
+tampering is actually caught, not just accepted.
+
+```bash
+# 1. Signer setup
+cd signer
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e '.[dev]'
+
+# 2. Generate a keypair
+python -m asset_signer keygen --pub bundle.pub --secret bundle.key
+# copy the printed base64 line
+
+# 3. Embed the public key and build the verifier
+#    paste the line from step 2 into verifier/src/main.rs as PUBLIC_KEY
+cd ../verifier
+cargo build --release
+cargo test              # sanity: sha256 known-vector test passes
+
+# 4. Build a bundle via the CLI
+cd ../signer
+mkdir -p /tmp/demo-assets/pkg
+echo "hello world" > /tmp/demo-assets/pkg/hello.txt
+python -m asset_signer bundle --assets /tmp/demo-assets --out ./dist --secret bundle.key
+
+# 5. Verify it
+../verifier/target/release/asset-verify ./dist
+# expect: OK: bundle verified (1 assets)
+
+# 6. Prove tampering is caught (not just rubber-stamped)
+echo "corrupted" >> dist/pkg.zip
+../verifier/target/release/asset-verify ./dist
+echo "exit code: $?"     # expect: FAILED: asset failed hash check ..., exit 1
+# rebuild dist/ to undo the corruption before reusing it:
+rm -rf dist && python -m asset_signer bundle --assets /tmp/demo-assets --out ./dist --secret bundle.key
+
+# 7. (Optional) Same bundle, built via the web form instead of the CLI
+docker compose up --build -d          # from the repo root
+curl -s -o /tmp/demo-bundle.zip \
+     -F "files=@/tmp/demo-assets/pkg/hello.txt" \
+     http://127.0.0.1:8000/api/bundle
+mkdir -p /tmp/demo-verify && unzip -o /tmp/demo-bundle.zip -d /tmp/demo-verify
+./verifier/target/release/asset-verify /tmp/demo-verify   # same OK result
+docker compose down                   # from the repo root
+```
+
+If step 5 (and step 7, if you run it) print `OK: bundle verified` and step 6
+prints `FAILED: ...` with a non-zero exit, the full Python -> Rust chain — and
+its web-upload alternative — is working end to end.
+
 ## Testing
 
 ```bash
 cd signer && PYTHONPATH=. python -m pytest tests/ -q
+cd ../verifier && cargo test
 ```
 
-The suite cross-checks the native Python signatures against the reference
-`minisign` binary when it is installed, which is the guarantee of Rust-side
-compatibility.
+The Python suite cross-checks the native Python signatures against the
+reference `minisign` binary when it is installed, which is the guarantee of
+Rust-side compatibility. The Rust suite includes a known-vector SHA-256 test.
+
+There is no separate automated test for `server/` — it's a thin wrapper
+around `asset_signer.bundle.build_bundle`, so the signer test suite already
+covers its correctness. Use the end-to-end smoke test above (step 7) to
+exercise it directly.
 
 ## Extending beyond the PoC
 
